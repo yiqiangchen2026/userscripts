@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OKX LP 区间快捷设置（稳定币偏重）
 // @namespace    local.codex.okx.lp-range
-// @version      1.3.3
+// @version      1.3.4
 // @description  按现价快速填写 OKX Uniswap V3 的价格区间；不填写投资金额，也不提交交易。
 // @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdc-*
 // @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdg-*
@@ -102,6 +102,13 @@
     return false;
   }
 
+  function zoomOutChart() {
+    const control = document.querySelector('[role="button"][aria-label="zoomOut"]');
+    if (!control) return false;
+    control.click();
+    return true;
+  }
+
   const panel = document.createElement('div');
   panel.id = ID;
   panel.innerHTML = `
@@ -159,7 +166,8 @@
       actual = actualRange(currentPrice());
       const success = matchesGoal(actual);
       if (!actual) throw new Error('页面没有接受有效区间。请手动检查价格框。');
-      status.textContent = `页面实际：${actual.min} ～ ${actual.max}\n下方 ${actual.below.toFixed(2)}%，上方 ${actual.above.toFixed(2)}%；总宽度 ${actual.width.toFixed(2)}%。${success ? '\n✓ 满足脚本条件；请核对奖励规则后再申购。' : '\n⚠ 未达到“宽度 >8%、上方 0.2%～0.3%”；请手动调整，勿按此结果直接申购。'}`;
+      const zoomedOut = zoomOutChart();
+      status.textContent = `页面实际：${actual.min} ～ ${actual.max}\n下方 ${actual.below.toFixed(2)}%，上方 ${actual.above.toFixed(2)}%；总宽度 ${actual.width.toFixed(2)}%。${success ? '\n✓ 满足脚本条件；请核对奖励规则后再申购。' : '\n⚠ 未达到“宽度 >8%、上方 0.2%～0.3%”；请手动调整，勿按此结果直接申购。'}${zoomedOut ? '' : '\n⚠ 未找到图表缩小按钮，请手动调整图表视野。'}`;
     } catch (error) {
       status.textContent = `⚠ ${error.message}`;
     } finally {
