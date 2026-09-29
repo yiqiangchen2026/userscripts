@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         OKX LP 区间快捷设置（稳定币偏重）
 // @namespace    local.codex.okx.lp-range
-// @version      1.3.4
+// @version      1.3.5
 // @description  按现价快速填写 OKX Uniswap V3 的价格区间；不填写投资金额，也不提交交易。
 // @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdc-*
 // @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdg-*
@@ -19,6 +19,7 @@
   const roundDown = value => Math.floor(value * 10000) / 10000;
   const roundUp = value => Math.ceil(value * 10000) / 10000;
   const minWidth = 8.01; // 严格超过 8%，给价格显示与取整留一点余量
+  const maxWidth = 8.2; // 不把明显过宽的区间误报为成功
 
   function priceBox(label) {
     return [...document.querySelectorAll('div[class*="price-input-container"]')]
@@ -76,7 +77,8 @@
   }
 
   function matchesGoal(range) {
-    return range && range.width > minWidth && range.above > 0.2 && range.above < 0.3;
+    return range && range.width > minWidth && range.width <= maxWidth
+      && range.above > 0.2 && range.above < 0.3;
   }
 
   async function stepPrice(label, direction) {
@@ -98,6 +100,36 @@
       if (lastDirection && direction !== lastDirection) return false;
       await stepPrice('Max price', direction);
       lastDirection = direction;
+    }
+    return false;
+  }
+
+  async function alignLower(price) {
+    let range = actualRange(price);
+    if (!range) return false;
+    // 直接输入下限后，OKX 可能吸附到比目标低很多的档位。
+    // 用页面按钮逐档逼近，保留宽度刚好超过 8.01% 的最后一档。
+    if (range.width <= minWidth) {
+      for (let i = 0; i < 80; i++) {
+        const previousMin = range.min;
+        await stepPrice('Min price', 'Decrease');
+        range = actualRange(price);
+        if (!range || range.min >= previousMin) return false;
+        if (range.width > minWidth) return true;
+      }
+      return false;
+    }
+    for (let i = 0; i < 80; i++) {
+      const previousMin = range.min;
+      await stepPrice('Min price', 'Increase');
+      const next = actualRange(price);
+      if (!next || next.min <= previousMin) return false;
+      if (next.width <= minWidth) {
+        await stepPrice('Min price', 'Decrease');
+        const restored = actualRange(price);
+        return !!restored && restored.width > minWidth && restored.min <= previousMin;
+      }
+      range = next;
     }
     return false;
   }
@@ -152,22 +184,14 @@
       status.textContent = `现价 ${price}；正在设置并校准价格档位…`;
       await setPrice(rangeInput('Min price'), targetMin);
       await setPrice(rangeInput('Max price'), targetMax);
-      let upperAligned = await alignUpper(price);
-      let actual = actualRange(price);
-      // 若 OKX 把下限向上吸附，就用页面自己的减号逐档加宽。
-      for (let i = 0; i < 20 && upperAligned && actual && !matchesGoal(actual); i++) {
-        const previousMin = actual.min;
-        await stepPrice('Min price', 'Decrease');
-        upperAligned = await alignUpper(price);
-        actual = actualRange(price);
-        if (!actual || actual.min >= previousMin) break;
-      }
+      const upperAligned = await alignUpper(price);
+      const lowerAligned = upperAligned && await alignLower(price);
       // 价格在操作期间可能变化；最终以页面此刻显示的现价再验一次。
-      actual = actualRange(currentPrice());
-      const success = matchesGoal(actual);
+      const actual = actualRange(currentPrice());
+      const success = upperAligned && lowerAligned && matchesGoal(actual);
       if (!actual) throw new Error('页面没有接受有效区间。请手动检查价格框。');
       const zoomedOut = zoomOutChart();
-      status.textContent = `页面实际：${actual.min} ～ ${actual.max}\n下方 ${actual.below.toFixed(2)}%，上方 ${actual.above.toFixed(2)}%；总宽度 ${actual.width.toFixed(2)}%。${success ? '\n✓ 满足脚本条件；请核对奖励规则后再申购。' : '\n⚠ 未达到“宽度 >8%、上方 0.2%～0.3%”；请手动调整，勿按此结果直接申购。'}${zoomedOut ? '' : '\n⚠ 未找到图表缩小按钮，请手动调整图表视野。'}`;
+      status.textContent = `页面实际：${actual.min} ～ ${actual.max}\n下方 ${actual.below.toFixed(2)}%，上方 ${actual.above.toFixed(2)}%；总宽度 ${actual.width.toFixed(2)}%。${success ? '\n✓ 满足脚本条件；请核对奖励规则后再申购。' : '\n⚠ 未达到“宽度 >8.01% 且 ≤8.20%、上方 0.2%～0.3%”；请手动调整，勿按此结果直接申购。'}${zoomedOut ? '' : '\n⚠ 未找到图表缩小按钮，请手动调整图表视野。'}`;
     } catch (error) {
       status.textContent = `⚠ ${error.message}`;
     } finally {
