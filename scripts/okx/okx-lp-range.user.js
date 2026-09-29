@@ -1,11 +1,10 @@
 // ==UserScript==
 // @name         OKX LP 区间快捷设置（稳定币偏重）
 // @namespace    local.codex.okx.lp-range
-// @version      1.3.2
+// @version      1.3.3
 // @description  按现价快速填写 OKX Uniswap V3 的价格区间；不填写投资金额，也不提交交易。
 // @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdc-*
 // @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdg-*
-// @match        https://web3.okx.com/earn/product/uniswap-v3-x-layer-*-usdt-*
 // @grant        none
 // ==/UserScript==
 
@@ -34,7 +33,7 @@
     const quote = [...(row?.querySelectorAll('span') || [])]
       .map(span => span.textContent?.trim() || '')
       .find(text => /\s+per\s+/i.test(text));
-    if (!/^(?:USDC|USDG|USDT)\s+per\s+\S+$/i.test(quote || '')) {
+    if (!/^(?:USDC|USDG)\s+per\s+\S+$/i.test(quote || '')) {
       throw new Error('当前报价不是稳定币 / 股票代币；已停止。');
     }
     for (const label of ['Min price', 'Max price']) {
